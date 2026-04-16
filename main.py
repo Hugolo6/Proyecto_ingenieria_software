@@ -8,6 +8,6 @@
 class Partida:
 
     def __init__(self):
-        self.usuario = "El guayaba"
+        self.usuario = "El guayabo"
         self.precio = ""
         self.producto
