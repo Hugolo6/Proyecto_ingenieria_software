@@ -18,6 +18,7 @@ class VistaLogin:
         self.campo_usuario = ft.TextField(
             width=300,
             bgcolor="white",
+            color="black",
             border_radius=10,
             height=45,
             text_size=16,
@@ -42,6 +43,7 @@ class VistaLogin:
             can_reveal_password=False,
             width=300,
             bgcolor="white",
+            color="black",
             border_radius=10,
             height=45,
             text_size=16,
@@ -59,7 +61,6 @@ class VistaLogin:
             ),
         )
 
-        # Título con rectángulo gris (centrado)
         titulo = ft.Container(
             content=ft.Text("INICIO DE SESIÓN", size=24, weight="bold", color="black"),
             bgcolor="#DADADA",
