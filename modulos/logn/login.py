@@ -79,7 +79,7 @@ class VistaLogin:
                     ft.Container(height=30),
                     titulo,
                     ft.Container(height=40),
-                    grupo_usuario,      # ahora son contenedores de ancho fijo 300
+                    grupo_usuario,     
                     ft.Container(height=25),
                     grupo_contrasena,
                     ft.Container(height=50),
@@ -96,7 +96,7 @@ class VistaLogin:
                     ),
                     ft.Container(height=20),
                 ],
-                horizontal_alignment="center",  # centra los contenedores de 300px
+                horizontal_alignment="center",  # centra los contenedores 
                 spacing=0,
             ),
         )
