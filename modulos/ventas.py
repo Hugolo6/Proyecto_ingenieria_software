@@ -15,12 +15,7 @@ class VistaVentas:
         self.folio_contador = self.cargar_folio_dia()
 
         # Productos disponibles (simulados)
-        self.productos_disponibles = {
-            "750134567890": {"codigo": "750134567890", "descripcion": "Galletas 25 gr chokis", "precio": 18.00, "unidad": "PZ", "iva": 0.16},
-            "782116812212": {"codigo": "782116812212", "descripcion": "Aceite Nutrioli 1L", "precio": 25.00, "unidad": "PZ", "iva": 0.16},
-            "123456789012": {"codigo": "123456789012", "descripcion": "Coca-Cola 600ml", "precio": 15.00, "unidad": "PZ", "iva": 0.16},
-            "987654321098": {"codigo": "987654321098", "descripcion": "Manzana 1kg", "precio": 45.00, "unidad": "KG", "iva": 0.00},
-        }
+
 
         self.page.title = "Módulo de Ventas"
         self.page.bgcolor = "#ffffff"
