@@ -12,3 +12,10 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     ft.run(main)
+
+    def main(page: ft.Page):
+        def al_iniciar_sesion(nombre, rol):
+            page.controls.clear()
+            VistaVentas(page, nombre, rol)
+
+        VistaLogin(page, al_iniciar_sesion)
