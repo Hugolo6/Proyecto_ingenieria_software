@@ -1,5 +1,6 @@
-# modulos/logn/login.py
+# modulos/login.py
 import flet as ft
+from db import login as validar_login
 
 class VistaLogin:
     def __init__(self, pagina: ft.Page, al_iniciar_sesion):
@@ -106,21 +107,37 @@ class VistaLogin:
         self.pagina.update()
 
     def mostrar_error(self, mensaje):
-        self.pagina.show_snack_bar(
-            ft.SnackBar(
-                content=ft.Text(mensaje, color="white"),
-                bgcolor="red",
-                action="Cerrar",
-                duration=3000,
-            )
+        dlg = ft.AlertDialog(
+            title=ft.Text("Error"),
+            content=ft.Text(mensaje),
+            actions=[
+                ft.TextButton("Cerrar", on_click=lambda e: self.cerrar_dialogo(dlg))
+            ],
         )
+        self.pagina.dialog = dlg
+        dlg.open = True
+        self.pagina.update()
+    
+    def cerrar_dialogo(self, dlg):
+        dlg.open = False
+        self.pagina.update()
 
     def validar_credenciales(self, e):
         usuario = self.campo_usuario.value.strip()
         contrasena = self.campo_contrasena.value.strip()
-        if usuario == "admin" and contrasena == "admin123":
-            self.al_iniciar_sesion(usuario, "admin")
-        elif usuario == "empleado" and contrasena == "empleado123":
-            self.al_iniciar_sesion(usuario, "empleado")
+        
+        if not usuario or not contrasena:
+            self.mostrar_error("❌ Por favor completa todos los campos")
+            return
+        
+        # Validar contra la base de datos
+        usuario_datos = validar_login(usuario, contrasena)
+        
+        if usuario_datos:
+            # Login exitoso, obtener datos del usuario
+            nombre_completo = usuario_datos.get('nombre_completo', usuario)
+            rol = usuario_datos.get('rol', 'empleado')
+            usuario_id = usuario_datos.get('id', 1)
+            self.al_iniciar_sesion(usuario, nombre_completo, rol, usuario_id)
         else:
             self.mostrar_error("❌ Usuario o contraseña incorrectos")

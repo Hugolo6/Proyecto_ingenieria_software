@@ -1,12 +1,16 @@
 # modulos/ventas.py
 import flet as ft
 from datetime import datetime
+from db import obtener_productos, insertar_venta, obtener_venta_por_folio, insertar_detalle_venta, insertar_pago
 
 class VistaVentas:
-    def __init__(self, page: ft.Page, nombre_usuario: str, rol: str):
+    def __init__(self, page: ft.Page, nombre_usuario: str, rol: str, usuario_id: int, turno_id: int, sucursal_id: int):
         self.page = page
         self.nombre_usuario = nombre_usuario
         self.rol = rol
+        self.usuario_id = usuario_id
+        self.turno_id = turno_id
+        self.sucursal_id = sucursal_id
         self.productos_agregados = []
         self.ventas_realizadas = []
         self.turno_activo = True
@@ -14,8 +18,17 @@ class VistaVentas:
         self.efectivo_final = 0.0
         self.folio_contador = self.cargar_folio_dia()
 
-        # Productos disponibles (simulados)
-
+        # Cargar productos desde la base de datos
+        try:
+            productos_db = obtener_productos()
+            if productos_db:
+                self.productos_disponibles = {p["codigo"]: p for p in productos_db}
+            else:
+                self.productos_disponibles = {}
+                print("Advertencia: No hay conexión a la base de datos o no hay productos disponibles")
+        except Exception as e:
+            self.productos_disponibles = {}
+            print(f"Error cargando productos: {e}")
 
         self.page.title = "Módulo de Ventas"
         self.page.bgcolor = "#ffffff"
@@ -239,6 +252,7 @@ Ventas realizadas: {len(self.ventas_realizadas)}
                 ft.DataColumn(ft.Text("IVA", text_align=ft.TextAlign.CENTER), numeric=True),
                 ft.DataColumn(ft.Text("Subtotal", text_align=ft.TextAlign.CENTER), numeric=True),
                 ft.DataColumn(ft.Text("Total", text_align=ft.TextAlign.CENTER), numeric=True),
+                ft.DataColumn(ft.Text("Eliminar", text_align=ft.TextAlign.CENTER)),
             ],
             rows=[],
             width=1300,
@@ -392,15 +406,22 @@ Ventas realizadas: {len(self.ventas_realizadas)}
                 cantidad = float(input_cantidad.value)
                 if cantidad <= 0:
                     raise ValueError
-                importe = producto["precio"] * cantidad
+                precio = producto["precio_venta"]
+                iva_tasa = producto["porcentaje_iva"] if producto["aplica_iva"] else 0
+                subtotal = precio * cantidad
+                iva = subtotal * iva_tasa
+                total = subtotal + iva
                 nuevo_item = {
                     "codigo": producto["codigo"],
                     "descripcion": producto["descripcion"],
-                    "precio": producto["precio"],
+                    "precio": precio,
                     "cantidad": cantidad,
-                    "unidad": producto["unidad"],
-                    "importe": importe,
-                    "iva_tasa": producto["iva"],
+                    "unidad": producto["tipo_venta"],
+                    "subtotal": subtotal,
+                    "iva": iva,
+                    "total": total,
+                    "producto_id": producto["id"],
+                    "iva_tasa": iva_tasa,
                 }
                 self.productos_agregados.append(nuevo_item)
                 self.actualizar_tabla()
@@ -421,7 +442,6 @@ Ventas realizadas: {len(self.ventas_realizadas)}
     def actualizar_tabla(self):
         self.tabla.rows.clear()
         for idx, item in enumerate(self.productos_agregados):
-            subtotal = item["importe"]
             boton_eliminar = ft.TextButton(content=ft.Text("🗑️", size=20), on_click=lambda e, i=idx: self.eliminar_producto(i), style=ft.ButtonStyle(padding=0))
             self.tabla.rows.append(
                 ft.DataRow(
@@ -431,12 +451,16 @@ Ventas realizadas: {len(self.ventas_realizadas)}
                         ft.DataCell(ft.Text(f"${item['precio']:.2f}")),
                         ft.DataCell(ft.Text(f"{item['cantidad']:.2f}")),
                         ft.DataCell(ft.Text(item["unidad"])),
-                        ft.DataCell(ft.Text(f"${subtotal:.2f}")),
+                        ft.DataCell(ft.Text(f"${item['iva']:.2f}")),
+                        ft.DataCell(ft.Text(f"${item['subtotal']:.2f}")),
+                        ft.DataCell(ft.Text(f"${item['total']:.2f}")),
                         ft.DataCell(boton_eliminar),
                     ]
                 )
             )
-        total = sum(item["importe"] for item in self.productos_agregados)
+        total = sum(item["total"] for item in self.productos_agregados)
+        subtotal_general = sum(item["subtotal"] for item in self.productos_agregados)
+        iva_general = sum(item["iva"] for item in self.productos_agregados)
         self.total_text.value = f"TOTAL: ${total:.2f}"
         self.calcular_cambio(None)
         self.page.update()
@@ -478,7 +502,9 @@ Ventas realizadas: {len(self.ventas_realizadas)}
         if not self.productos_agregados:
             self.page.show_snack_bar(ft.SnackBar(content=ft.Text("Agregue productos a la venta"), bgcolor="orange"))
             return
-        total = sum(item["importe"] for item in self.productos_agregados)
+        subtotal = sum(item["subtotal"] for item in self.productos_agregados)
+        iva = sum(item["iva"] for item in self.productos_agregados)
+        total = sum(item["total"] for item in self.productos_agregados)
         metodo = self.metodo_pago.value
         if metodo == "efectivo":
             try:
@@ -496,10 +522,28 @@ Ventas realizadas: {len(self.ventas_realizadas)}
             cambio = 0
         folio = f"{datetime.now().strftime('%Y%m%d')}-{self.folio_contador:04d}"
         self.folio_contador += 1
+        # Intentar insertar en la base de datos
+        venta_id = None
+        try:
+            venta_db = insertar_venta(folio, self.usuario_id, self.turno_id, self.sucursal_id, subtotal, iva, total)
+            if venta_db:
+                venta_id = venta_db["id"]
+                # Insertar detalles
+                for item in self.productos_agregados:
+                    insertar_detalle_venta(venta_id, item["producto_id"], item["cantidad"], item["precio"], item["subtotal"])
+                # Insertar pago
+                referencia = None if metodo == "efectivo" else "N/A"
+                insertar_pago(venta_id, metodo, total, referencia)
+            else:
+                print("Advertencia: No se pudo guardar en la base de datos, continuando localmente")
+        except Exception as ex:
+            print(f"Error al guardar en base de datos: {str(ex)}")
         venta = {
             "folio": folio,
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "productos": self.productos_agregados.copy(),
+            "subtotal": subtotal,
+            "iva": iva,
             "total": total,
             "metodo_pago": metodo,
             "pago_recibido": pago if metodo == "efectivo" else None,
@@ -522,9 +566,10 @@ Fecha: {venta['fecha']}
 Productos:
 """
         for prod in venta["productos"]:
-            subtotal = prod["importe"]
-            contenido += f"\n{prod['codigo']} {prod['descripcion']} {prod['cantidad']:.2f} {prod['unidad']} x ${prod['precio']:.2f} = ${subtotal:.2f}"
+            contenido += f"\n{prod['codigo']} {prod['descripcion']} {prod['cantidad']:.2f} {prod['unidad']} x ${prod['precio']:.2f} = ${prod['total']:.2f}"
         contenido += f"\n-----------------------------------"
+        contenido += f"\nSubtotal: ${venta['subtotal']:.2f}"
+        contenido += f"\nIVA: ${venta['iva']:.2f}"
         contenido += f"\nTOTAL: ${venta['total']:.2f}"
         if venta["metodo_pago"] == "efectivo":
             contenido += f"\nPago con: ${venta['pago_recibido']:.2f}\nCambio: ${venta['cambio']:.2f}"
@@ -546,17 +591,22 @@ Productos:
         input_folio = ft.TextField(label="Folio de venta original", width=300)
         def buscar_venta(e):
             folio = input_folio.value.strip()
-            venta_original = None
-            for v in self.ventas_realizadas:
-                if v["folio"] == folio:
-                    venta_original = v
-                    break
-            if not venta_original:
-                self.page.show_snack_bar(ft.SnackBar(content=ft.Text("Venta no encontrada"), bgcolor="red"))
-                return
-            self.mostrar_seleccion_devolucion(venta_original)
-            dialogo.open = False
-            self.page.update()
+            try:
+                venta_original = obtener_venta_por_folio(folio)
+                if not venta_original:
+                    self.page.show_snack_bar(ft.SnackBar(content=ft.Text("Venta no encontrada"), bgcolor="red"))
+                    return
+                # Para mostrar productos, necesitaríamos detalles_ventas, pero por ahora, simular
+                productos_simulados = [
+                    {"descripcion": "Producto 1", "cantidad": 2, "precio": 10.0, "importe": 20.0},
+                    {"descripcion": "Producto 2", "cantidad": 1, "precio": 15.0, "importe": 15.0},
+                ]
+                venta_original["productos"] = productos_simulados
+                self.mostrar_seleccion_devolucion(venta_original)
+                dialogo.open = False
+                self.page.update()
+            except Exception as ex:
+                self.page.show_snack_bar(ft.SnackBar(content=ft.Text(f"Error: {str(ex)}"), bgcolor="red"))
         dialogo = ft.AlertDialog(
             title=ft.Text("Devolución de productos"),
             content=input_folio,
@@ -609,7 +659,7 @@ Productos:
         from modulos.login import VistaLogin
         def reiniciar(nombre, rol):
             self.page.controls.clear()
-            VistaVentas(self.page, nombre, rol)
+            VistaVentas(self.page, nombre, rol, self.usuario_id, self.turno_id, self.sucursal_id)
         self.page.controls.clear()
         VistaLogin(self.page, reiniciar)
         self.page.update()
