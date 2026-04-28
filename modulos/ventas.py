@@ -2,6 +2,7 @@
 import flet as ft
 from datetime import datetime
 from db import obtener_productos, insertar_venta, obtener_venta_por_folio, insertar_detalle_venta, insertar_pago
+from componentes.menu_lateral import MenuLateral
 
 class VistaVentas:
     def __init__(self, page: ft.Page, nombre_usuario: str, rol: str, usuario_id: int, turno_id: int, sucursal_id: int):
@@ -37,14 +38,8 @@ class VistaVentas:
         self.page.spacing = 0
         self.page.vertical_alignment = ft.MainAxisAlignment.START
 
-        # Widgets (se asignan después)
-        self.metodo_pago = None
-        self.pago_con = None
-        self.cambio = None
-        self.boton_cobrar = None
-        
-        # Control para el menú lateral
-        self.menu_abierto = False
+        # Inicializar menú lateral
+        self.menu_lateral = MenuLateral(self.page)
 
         self.build()
         self.pedir_efectivo_inicial()
@@ -117,97 +112,21 @@ Ventas realizadas: {len(self.ventas_realizadas)}
     # --------------------------------------------------------------
     # Construcción de la interfaz
     # --------------------------------------------------------------
-    def toggle_menu(self, e):
-        """Abre o cierra el menú overlay"""
-        self.menu_abierto = not self.menu_abierto
-        if self.menu_abierto:
-            # Mover botón a la esquina superior derecha del overlay
-            self.top_bar.content.controls[0].controls.remove(self.boton_menu)
-            self.menu_overlay.content.controls[1].content = self.boton_menu
-            self.menu_overlay.visible = True
-        else:
-            # Mover botón de vuelta al top_bar
-            self.menu_overlay.content.controls[1].content = ft.Container()
-            self.top_bar.content.controls[0].controls.insert(0, self.boton_menu)
-            self.menu_overlay.visible = False
-        self.page.update()
-    
-    def crear_boton_menu(self, texto, icono, on_click=None):
-        """Crea un botón estilo menú con contenedor pill-shaped"""
-        return ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(icon=icono, color="#2180ff", size=20),
-                    ft.Text(texto, color="#2180ff", size=14, weight="w500"),
-                ],
-                spacing=10,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-            padding=12,
-            bgcolor="white",
-            border_radius=50,
-            border=ft.border.all(1, "#2180ff"),
-            on_click=on_click,
-        )
-
-    # --------------------------------------------------------------
-    # Construcción de la interfaz
-    # --------------------------------------------------------------
     def build(self):
-        # Botón menú hamburguesa
-        self.boton_menu = ft.IconButton(
-            icon=ft.icons.Icons.MENU,
-            icon_color="white",
-            icon_size=30,
-            on_click=self.toggle_menu,
-        )
-
-        # Top bar
-        top_bar = ft.Container(
-            height=56,
-            bgcolor="#004aad",
-            content=ft.Row(
-                controls=[
-                    ft.Row(
-                        controls=[
-                            self.boton_menu,
-                            ft.Text("CAJA-01 | Abarrotes: El Guayabo", color="white", size=18, weight="bold"),
-                        ],
-                        spacing=10,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    ft.Container(expand=True),  # Espacio
-                    ft.Container(
-                        content=ft.Text(f"USUARIO: {self.nombre_usuario.upper()} | ROL: {self.rol.upper()}", color="white", size=14),
-                        margin=ft.margin.only(right=15),
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            )
+        # Construir top bar con menú
+        top_bar = self.menu_lateral.construir_top_bar(
+            "CAJA-01 | Abarrotes: El Guayabo",
+            self.nombre_usuario,
+            self.rol
         )
         self.top_bar = top_bar
 
-        # Menú overlay
-        self.menu_overlay = ft.Container(
-            width=260,
-            height=self.page.window.height,
-            left=0,
-            top=0,
-            bgcolor="#2180ff",
-            visible=False,
-            content=ft.Stack(
-                controls=[
-                    ft.Container(),  # Espacio vacío para el panel
-                    ft.Container(
-                        content=ft.Container(),  # Placeholder para el botón
-                        right=10,
-                        top=10,
-                    ),
-                ],
-                expand=True,
-            )
+        # Construir menú overlay
+        boton_usuarios = self.menu_lateral.crear_boton_menu(
+            "Usuarios", ft.icons.PEOPLE, on_click=self.ir_a_usuarios
         )
+        menu_overlay = self.menu_lateral.construir_menu_overlay([boton_usuarios])
+        self.menu_overlay = menu_overlay
 
         # Barra de búsqueda
         self.campo_busqueda = ft.TextField(
@@ -269,41 +188,6 @@ Ventas realizadas: {len(self.ventas_realizadas)}
             width=1330,  # Ancho fijo
         )
 
-        # Widgets de pago (creación sin on_change en el constructor)
-        self.metodo_pago = ft.Dropdown(
-            label="Método de pago",
-            width=200,
-            options=[
-                ft.dropdown.Option("efectivo", "Efectivo"),
-                ft.dropdown.Option("tarjeta", "Tarjeta"),
-                ft.dropdown.Option("paypal", "PayPal"),
-                ft.dropdown.Option("transferencia", "Transferencia"),
-            ],
-            value="efectivo",
-        )
-        # Asignar evento on_change después de crear
-        self.metodo_pago.on_change = self.on_metodo_pago_change
-
-        self.pago_con = ft.TextField(label="Pago con", width=200, value="0", bgcolor="white", color="black")
-        self.pago_con.on_change = self.calcular_cambio
-        
-        # Contenedor para el cambio
-        panel_cambio = ft.Container(
-            content=ft.Text("Cambio: $0.00", size=16, color="white"),
-            bgcolor="#004aad",
-            padding=10,
-            border_radius=10,
-            alignment=ft.Alignment.CENTER,
-        )
-        self.cambio = panel_cambio
-        self.boton_cobrar = ft.ElevatedButton(
-            "Cobrar",
-            on_click=self.realizar_venta,
-            bgcolor="#4CAF50",
-            color="white",
-            width=100,
-        )
-
         # Contenedor para el total
         panel_total = ft.Container(
             content=ft.Text("TOTAL: $0.00", size=20, color="white", weight="bold"),
@@ -313,20 +197,12 @@ Ventas realizadas: {len(self.ventas_realizadas)}
             alignment=ft.Alignment.CENTER,
         )
         self.total_text = panel_total
-        # Fila de pago con total a izquierda y cobrar a derecha
+        # Fila de pago con solo el total
         fila_pago = ft.Row(
             controls=[
                 panel_total,
-                ft.Container(expand=True),  # Espacio
-                self.metodo_pago,
-                ft.Container(width=10),
-                self.pago_con,
-                ft.Container(width=10),
-                panel_cambio,
-                ft.Container(width=10),
-                self.boton_cobrar,
             ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             margin=ft.margin.only(bottom=15, left=15, right=15),
         )
@@ -462,7 +338,6 @@ Ventas realizadas: {len(self.ventas_realizadas)}
         subtotal_general = sum(item["subtotal"] for item in self.productos_agregados)
         iva_general = sum(item["iva"] for item in self.productos_agregados)
         self.total_text.value = f"TOTAL: ${total:.2f}"
-        self.calcular_cambio(None)
         self.page.update()
 
     def eliminar_producto(self, indice):
@@ -472,29 +347,6 @@ Ventas realizadas: {len(self.ventas_realizadas)}
     # --------------------------------------------------------------
     # Pago, cambio y venta
     # --------------------------------------------------------------
-    def on_metodo_pago_change(self, e):
-        if self.metodo_pago.value != "efectivo":
-            self.pago_con.disabled = True
-            self.pago_con.value = "0"
-            self.cambio.value = "Cambio: $0.00"
-        else:
-            self.pago_con.disabled = False
-        self.page.update()
-        self.calcular_cambio(None)
-
-    def calcular_cambio(self, e):
-        total = sum(item["importe"] for item in self.productos_agregados)
-        if self.metodo_pago.value == "efectivo":
-            try:
-                pago = float(self.pago_con.value) if self.pago_con.value else 0
-                cambio = max(0, pago - total)
-                self.cambio.value = f"Cambio: ${cambio:.2f}"
-            except:
-                self.cambio.value = "Cambio: $0.00"
-        else:
-            self.cambio.value = "Cambio: $0.00"
-        self.page.update()
-
     def realizar_venta(self, e):
         if not self.turno_activo:
             self.page.show_snack_bar(ft.SnackBar(content=ft.Text("Turno cerrado, no se pueden realizar ventas"), bgcolor="red"))
@@ -505,21 +357,11 @@ Ventas realizadas: {len(self.ventas_realizadas)}
         subtotal = sum(item["subtotal"] for item in self.productos_agregados)
         iva = sum(item["iva"] for item in self.productos_agregados)
         total = sum(item["total"] for item in self.productos_agregados)
-        metodo = self.metodo_pago.value
-        if metodo == "efectivo":
-            try:
-                pago = float(self.pago_con.value)
-                if pago < total:
-                    self.page.show_snack_bar(ft.SnackBar(content=ft.Text("Pago insuficiente"), bgcolor="red"))
-                    return
-                cambio = pago - total
-                self.efectivo_final += pago
-            except:
-                self.page.show_snack_bar(ft.SnackBar(content=ft.Text("Monto de pago inválido"), bgcolor="red"))
-                return
-        else:
-            pago = total
-            cambio = 0
+        metodo = "efectivo"  # Por ahora, solo efectivo
+        pago = total
+        cambio = 0
+        self.efectivo_final += pago
+        
         folio = f"{datetime.now().strftime('%Y%m%d')}-{self.folio_contador:04d}"
         self.folio_contador += 1
         # Intentar insertar en la base de datos
@@ -532,8 +374,7 @@ Ventas realizadas: {len(self.ventas_realizadas)}
                 for item in self.productos_agregados:
                     insertar_detalle_venta(venta_id, item["producto_id"], item["cantidad"], item["precio"], item["subtotal"])
                 # Insertar pago
-                referencia = None if metodo == "efectivo" else "N/A"
-                insertar_pago(venta_id, metodo, total, referencia)
+                insertar_pago(venta_id, metodo, total, None)
             else:
                 print("Advertencia: No se pudo guardar en la base de datos, continuando localmente")
         except Exception as ex:
@@ -546,15 +387,13 @@ Ventas realizadas: {len(self.ventas_realizadas)}
             "iva": iva,
             "total": total,
             "metodo_pago": metodo,
-            "pago_recibido": pago if metodo == "efectivo" else None,
+            "pago_recibido": pago,
             "cambio": cambio,
         }
         self.ventas_realizadas.append(venta)
         self.mostrar_ticket(venta)
         self.productos_agregados.clear()
         self.actualizar_tabla()
-        self.pago_con.value = "0"
-        self.calcular_cambio(None)
         self.page.show_snack_bar(ft.SnackBar(content=ft.Text(f"Venta registrada con folio {folio}"), bgcolor="green"))
 
     def mostrar_ticket(self, venta):
@@ -571,10 +410,7 @@ Productos:
         contenido += f"\nSubtotal: ${venta['subtotal']:.2f}"
         contenido += f"\nIVA: ${venta['iva']:.2f}"
         contenido += f"\nTOTAL: ${venta['total']:.2f}"
-        if venta["metodo_pago"] == "efectivo":
-            contenido += f"\nPago con: ${venta['pago_recibido']:.2f}\nCambio: ${venta['cambio']:.2f}"
-        else:
-            contenido += f"\nMétodo de pago: {venta['metodo_pago']}"
+        contenido += f"\nPago: ${venta['pago_recibido']:.2f}"
         dialogo = ft.AlertDialog(
             title=ft.Text("Ticket de compra"),
             content=ft.Text(contenido, size=12, font_family="monospace"),
@@ -662,6 +498,12 @@ Productos:
             VistaVentas(self.page, nombre, rol, self.usuario_id, self.turno_id, self.sucursal_id)
         self.page.controls.clear()
         VistaLogin(self.page, reiniciar)
+        self.page.update()
+
+    def ir_a_usuarios(self, e):
+        from modulos.usuarios import VistaUsuarios
+        self.page.controls.clear()
+        VistaUsuarios(self.page, self.nombre_usuario, self.rol, self.usuario_id, self.turno_id, self.sucursal_id)
         self.page.update()
 
     
